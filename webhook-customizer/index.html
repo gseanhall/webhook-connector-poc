@@ -22,33 +22,33 @@
 <body>
   <div id="root"></div>
   <script type="text/babel" data-type="module">
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 /* ─── AppNeta field definitions ─── */
 const APPNETA_FIELDS = [
-  { name: "id", desc: "ID of the webhook or connector" },
-  { name: "type", desc: "Cleared (0), Raised (1)" },
-  { name: "alarmId", desc: "Alarm ID" },
-  { name: "alarmRuleId", desc: "Alarm rule ID" },
-  { name: "alarmRuleName", desc: "Alarm rule name" },
-  { name: "alarmSeverity", desc: "Alarm severity" },
-  { name: "alarmMessage", desc: "Alarm message" },
-  { name: "alarmLink", desc: "Alarm details deeplink" },
-  { name: "itemId", desc: "Item ID" },
-  { name: "itemName", desc: "Item name: Path name" },
-  { name: "itemType", desc: "Item type: web/network" },
-  { name: "raisedTime", desc: "Alarm raised timestamp" },
+  { name: "alarmId", desc: "Unique alarm identifier (UUID)" },
+  { name: "alarmSeverity", desc: "Alarm severity (CRITICAL, MAJOR, MINOR, INFO)" },
+  { name: "alarmType", desc: "Alarm type (e.g. QUALITY_OF_SERVICE)" },
   { name: "clearedTime", desc: "Alarm cleared timestamp" },
+  { name: "connectorId", desc: "Connector ID" },
+  { name: "connectorName", desc: "Connector name" },
+  { name: "connectorType", desc: "Connector type (e.g. WEBHOOK)" },
+  { name: "description", desc: "Alarm description / condition message" },
   { name: "firstViolationTime", desc: "First violation timestamp" },
-  { name: "monitoringPolicyId", desc: "Monitoring policy id" },
-  { name: "monitoringPolicyName", desc: "Monitoring policy name" },
-  { name: "monitoringPolicyGroupId", desc: "Monitoring policy group id" },
-  { name: "monitoringPolicyGroupName", desc: "Monitoring policy group name" },
+  { name: "itemId", desc: "Monitored item ID" },
+  { name: "itemName", desc: "Monitored item name (path name)" },
+  { name: "itemType", desc: "Monitored item type (e.g. NETWORK_PATH)" },
+  { name: "monitoringPointId", desc: "Monitoring point ID" },
+  { name: "monitoringPointName", desc: "Monitoring point name" },
+  { name: "noisyConditions", desc: "Noisy condition flags (array)" },
+  { name: "orgId", desc: "Organization ID" },
+  { name: "providerLink", desc: "Link to alarm details in AppNeta" },
+  { name: "raisedTime", desc: "Alarm raised timestamp" },
+  { name: "rule", desc: "Alarm rule name" },
+  { name: "ruleId", desc: "Alarm rule ID" },
+  { name: "state", desc: "Alarm state (RAISED, CLEARED)" },
+  { name: "tags", desc: "Tags array ({category, value} objects)" },
   { name: "target", desc: "Target IP / FQDN / URL" },
-  { name: "monitoringPointId", desc: "Monitoring Point ID" },
-  { name: "monitoringPointName", desc: "Monitoring Point name" },
-  { name: "monitoringPointType", desc: "Monitoring Point type" },
-  { name: "alarmCondition", desc: "Alarm condition" },
 ];
 
 /* ─── Built-in templates ─── */
@@ -58,28 +58,25 @@ const TEMPLATES = {
     body: `{
   "alarmId": "{{alarmId}}",
   "alarmSeverity": "{{alarmSeverity}}",
-  "alarmCondition": "{{alarmCondition}}",
+  "alarmType": "{{alarmType}}",
   "clearedTime": "{{clearedTime}}",
-  "connectorId": "{{id}}",
-  "connectorType": "WEBHOOK",
-  "description": "{{alarmMessage}}",
+  "connectorId": "{{connectorId}}",
+  "connectorName": "{{connectorName}}",
+  "connectorType": "{{connectorType}}",
+  "description": "{{description}}",
   "firstViolationTime": "{{firstViolationTime}}",
   "itemId": "{{itemId}}",
   "itemName": "{{itemName}}",
   "itemType": "{{itemType}}",
   "monitoringPointId": "{{monitoringPointId}}",
   "monitoringPointName": "{{monitoringPointName}}",
-  "providerLink": "{{alarmLink}}",
+  "orgId": "{{orgId}}",
+  "providerLink": "{{providerLink}}",
   "raisedTime": "{{raisedTime}}",
-  "rule": "{{alarmRuleName}}",
-  "ruleId": "{{alarmRuleId}}",
-  "state": "{{mapValue type '1' 'RAISED' '0' 'CLEARED'}}",
-  "target": "{{target}}",
-  "monitoringPolicyId": "{{monitoringPolicyId}}",
-  "monitoringPolicyName": "{{monitoringPolicyName}}",
-  "monitoringPolicyGroupId": "{{monitoringPolicyGroupId}}",
-  "monitoringPolicyGroupName": "{{monitoringPolicyGroupName}}",
-  "monitoringPointType": "{{monitoringPointType}}"
+  "rule": "{{rule}}",
+  "ruleId": "{{ruleId}}",
+  "state": "{{state}}",
+  "target": "{{target}}"
 }`,
   },
   slack: {
@@ -90,13 +87,13 @@ const TEMPLATES = {
       "type": "header",
       "text": {
         "type": "plain_text",
-        "text": "AppNeta Alarm: {{alarmRuleName}}"
+        "text": "AppNeta Alarm: {{rule}}"
       }
     },
     {
       "type": "section",
       "fields": [
-        { "type": "mrkdwn", "text": "*Status:* {{type}}" },
+        { "type": "mrkdwn", "text": "*Status:* {{state}}" },
         { "type": "mrkdwn", "text": "*Severity:* {{alarmSeverity}}" }
       ]
     },
@@ -104,7 +101,7 @@ const TEMPLATES = {
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "{{alarmMessage}}"
+        "text": "{{description}}"
       }
     },
     {
@@ -113,7 +110,7 @@ const TEMPLATES = {
         {
           "type": "button",
           "text": { "type": "plain_text", "text": "View Details" },
-          "url": "{{alarmLink}}"
+          "url": "{{providerLink}}"
         }
       ]
     }
@@ -124,15 +121,15 @@ const TEMPLATES = {
     label: "Splunk HEC",
     body: `{
   "event": {
-    "message": "{{alarmMessage}}",
+    "message": "{{description}}",
     "severity": "{{alarmSeverity}}",
     "source": "appneta",
     "sourcetype": "alarm",
     "fields": {
       "alarm_id": "{{alarmId}}",
-      "rule_name": "{{alarmRuleName}}",
+      "rule_name": "{{rule}}",
       "target_host": "{{target}}",
-      "status": "{{type}}",
+      "status": "{{state}}",
       "timestamp": "{{raisedTime}}",
       "item_name": "{{itemName}}",
       "monitoring_point": "{{monitoringPointName}}"
@@ -150,11 +147,11 @@ const TEMPLATES = {
   "event_action": "trigger",
   "dedup_key": "{{alarmId}}",
   "payload": {
-    "summary": "{{alarmRuleName}}: {{alarmMessage}}",
+    "summary": "{{rule}}: {{description}}",
     "source": "appneta",
     "severity": "{{alarmSeverity}}",
     "component": "{{itemName}}",
-    "group": "{{monitoringPolicyName}}",
+    "group": "{{monitoringPointName}}",
     "class": "{{itemType}}",
     "custom_details": {
       "alarm_id": "{{alarmId}}",
@@ -164,7 +161,7 @@ const TEMPLATES = {
   },
   "links": [
     {
-      "href": "{{alarmLink}}",
+      "href": "{{providerLink}}",
       "text": "View in AppNeta"
     }
   ]
@@ -176,16 +173,16 @@ const TEMPLATES = {
   "@type": "MessageCard",
   "@context": "http://schema.org/extensions",
   "themeColor": "FF0000",
-  "summary": "AppNeta Alarm: {{alarmRuleName}}",
+  "summary": "AppNeta Alarm: {{rule}}",
   "sections": [
     {
-      "activityTitle": "{{alarmRuleName}}",
-      "activitySubtitle": "{{alarmMessage}}",
+      "activityTitle": "{{rule}}",
+      "activitySubtitle": "{{description}}",
       "facts": [
         { "name": "Severity", "value": "{{alarmSeverity}}" },
         { "name": "Item", "value": "{{itemName}}" },
         { "name": "Target", "value": "{{target}}" },
-        { "name": "Status", "value": "{{type}}" },
+        { "name": "Status", "value": "{{state}}" },
         { "name": "Raised", "value": "{{raisedTime}}" }
       ],
       "markdown": true
@@ -196,13 +193,41 @@ const TEMPLATES = {
       "@type": "OpenUri",
       "name": "View Alert",
       "targets": [
-        { "os": "default", "uri": "{{alarmLink}}" }
+        { "os": "default", "uri": "{{providerLink}}" }
       ]
     }
   ]
 }`,
   },
 };
+
+/* ─── Default sample data (matches actual webhook payload) ─── */
+const DEFAULT_SAMPLE_DATA = {
+  alarmId: "2d91d550-933a-4a91-9e4a-ac90b561350a",
+  alarmSeverity: "MAJOR",
+  alarmType: "QUALITY_OF_SERVICE",
+  clearedTime: "2026-04-17T19:25:02.178+0000",
+  connectorId: "752",
+  connectorName: "connector1",
+  connectorType: "WEBHOOK",
+  description: "Data Loss Any (default) is Greater Than Equal To 1 % for 1 out of 1 samples",
+  firstViolationTime: "2026-04-17T19:22:01.623+0000",
+  itemId: "122045793395906",
+  itemName: "P18A06098 - ANN <-> www.groupon.com (single)",
+  itemType: "NETWORK_PATH",
+  monitoringPointId: "122045790940946",
+  monitoringPointName: "P18A06098 - ANN",
+  noisyConditions: ["daily", "burst"],
+  orgId: "62813",
+  providerLink: "https://dev-app-02.pm-dev.appneta.com/pvc/ngp/alarm/2d91d550-933a-4a91-9e4a-ac90b561350a?orgId=62813",
+  raisedTime: "2026-04-17T19:24:02.228+0000",
+  rule: "mp type filtering",
+  ruleId: "3009",
+  state: "CLEARED",
+  tags: [{ category: "test.cat", value: "99" }],
+  target: "www.groupon.com",
+};
+const DEFAULT_SAMPLE_TEXT = JSON.stringify(DEFAULT_SAMPLE_DATA, null, 2);
 
 const SYSTEM_PROMPT = `You are a webhook payload template builder. The user has a monitoring application (AppNeta) that produces alarm/alert webhook data with these available fields:
 
@@ -286,20 +311,18 @@ function CustomizerModal({ open, onClose, onApply }) {
     if (!trimmed) { setError("Paste a sample JSON payload to transform."); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 4096,
           system: SYSTEM_PROMPT,
-          messages: [{ role: "user", content: `Map AppNeta webhook fields into this target JSON payload structure using {{fieldName}} template syntax. Follow any inline comments as instructions:\n\n${trimmed}` }],
+          userMessage: `Map AppNeta webhook fields into this target JSON payload structure using {{fieldName}} template syntax. Follow any inline comments as instructions:\n\n${trimmed}`,
         }),
       });
       const data = await resp.json();
-      if (data.error) throw new Error(data.error.message || "API error");
-      const text = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("");
-      if (!text) throw new Error("Empty response");
+      if (data.error) throw new Error(data.error);
+      const text = data.text;
+      if (!text) throw new Error("Empty response from server");
       let pretty;
       try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch {
         const stripped = text.replace(/```json?\s*/g, "").replace(/```/g, "").trim();
@@ -480,20 +503,15 @@ function ConnectorPage() {
   const [testerExpanded, setTesterExpanded] = useState(false);
   const importRef = useRef(null);
 
-  const SAMPLE_DATA = {
-    id: "12345", type: "1", alarmId: "AL-9876", alarmRuleId: "AR-111",
-    alarmRuleName: "High Latency Alert", alarmSeverity: "CRITICAL",
-    alarmMessage: "Network latency exceeded 200ms threshold on path US-East → EU-West",
-    alarmLink: "https://app.appneta.com/alarm/AL-9876",
-    itemId: "PATH-555", itemName: "US-East → EU-West", itemType: "network",
-    raisedTime: "2026-04-13T14:30:00Z", clearedTime: "",
-    firstViolationTime: "2026-04-13T14:28:00Z",
-    monitoringPolicyId: "MP-200", monitoringPolicyName: "Production Network Policy",
-    monitoringPolicyGroupId: "MPG-50", monitoringPolicyGroupName: "Global Policies",
-    target: "eu-west-gateway.example.com",
-    monitoringPointId: "MPOINT-10", monitoringPointName: "US-East-1",
-    monitoringPointType: "Enterprise", alarmCondition: "latency > 200ms",
-  };
+  // Editable sample data
+  const [sampleExpanded, setSampleExpanded] = useState(false);
+  const [sampleDataText, setSampleDataText] = useState(DEFAULT_SAMPLE_TEXT);
+  const [sampleDataError, setSampleDataError] = useState(null);
+  const sampleData = useMemo(() => {
+    try { return JSON.parse(sampleDataText); }
+    catch { return DEFAULT_SAMPLE_DATA; }
+  }, [sampleDataText]);
+  const isSampleCustom = sampleDataText !== DEFAULT_SAMPLE_TEXT;
 
   const registerHelpers = (Hbs) => {
     if (Hbs._appnetaHelpersRegistered) return;
@@ -828,7 +846,7 @@ function ConnectorPage() {
     try {
       const processed = preprocessTemplate(body);
       const template = window.Handlebars.compile(processed);
-      return template(SAMPLE_DATA);
+      return template(sampleData);
     } catch { return null; }
   };
 
@@ -945,7 +963,7 @@ function ConnectorPage() {
         const template = window.Handlebars.compile(processed);
         results.push({ msg: "Handlebars syntax is valid", type: "pass" });
         try {
-          rendered = template(SAMPLE_DATA);
+          rendered = template(sampleData);
         } catch (e) {
           results.push({ msg: `Handlebars render error: ${e.message}`, type: "error" });
         }
@@ -1023,7 +1041,7 @@ function ConnectorPage() {
     const processed = preprocessTemplate(body);
     try {
       const template = window.Handlebars.compile(processed);
-      const rendered = template(SAMPLE_DATA);
+      const rendered = template(sampleData);
       // Try to parse as JSON for pretty-printing
       let pretty;
       try {
@@ -1392,6 +1410,85 @@ function ConnectorPage() {
             </div>
           </div>
 
+          {/* Sample Data */}
+          <div style={{ marginTop: 18, marginBottom: 4 }}>
+            <div
+              onClick={() => setSampleExpanded(!sampleExpanded)}
+              style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
+            >
+              <h3 style={{ ...sectionTitle, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 10, transform: sampleExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "inline-block" }}>▶</span>
+                Sample Data
+                {sampleDataError && <span style={{ fontSize: 11, fontWeight: 500, color: "#dc2626" }}>— Invalid JSON</span>}
+                {!sampleDataError && isSampleCustom && <span style={{ fontSize: 11, fontWeight: 500, color: "#2563eb" }}>— Custom</span>}
+              </h3>
+            </div>
+
+            {sampleExpanded && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: "#6b7280", flex: 1 }}>
+                    Paste a real webhook payload to use for template rendering and test sends.
+                  </span>
+                  {isSampleCustom && (
+                    <button
+                      onClick={() => { setSampleDataText(DEFAULT_SAMPLE_TEXT); setSampleDataError(null); setLintResult(null); setHandlebarsResult(null); }}
+                      style={{
+                        background: "#fff", border: "1px solid #d1d5db", color: "#374151", borderRadius: 4,
+                        padding: "4px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >Reset to Default</button>
+                  )}
+                  <button
+                    onClick={() => {
+                      try {
+                        const parsed = JSON.parse(sampleDataText);
+                        setSampleDataText(JSON.stringify(parsed, null, 2));
+                        setSampleDataError(null);
+                      } catch { /* leave as-is if invalid */ }
+                    }}
+                    style={{
+                      background: "#fff", border: "1px solid #d1d5db", color: "#374151", borderRadius: 4,
+                      padding: "4px 12px", fontSize: 12, fontWeight: 500, cursor: sampleDataError ? "not-allowed" : "pointer",
+                      fontFamily: "inherit", opacity: sampleDataError ? 0.4 : 1,
+                    }}
+                    disabled={!!sampleDataError}
+                  >Format JSON</button>
+                </div>
+                <textarea
+                  value={sampleDataText}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSampleDataText(val);
+                    setLintResult(null);
+                    setHandlebarsResult(null);
+                    try { JSON.parse(val); setSampleDataError(null); }
+                    catch (err) { setSampleDataError(err.message); }
+                  }}
+                  spellCheck={false}
+                  style={{
+                    width: "100%", minHeight: 220, background: "#fafbfc",
+                    border: `1px solid ${sampleDataError ? "#fca5a5" : "#d1d5db"}`, borderRadius: 4,
+                    color: "#1e293b", fontFamily: "'JetBrains Mono', monospace", fontSize: 12, lineHeight: 1.55,
+                    padding: 14, resize: "vertical", outline: "none", boxSizing: "border-box",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = sampleDataError ? "#ef4444" : "#2563eb")}
+                  onBlur={(e) => (e.target.style.borderColor = sampleDataError ? "#fca5a5" : "#d1d5db")}
+                />
+                {sampleDataError && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#dc2626", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.4 }}>
+                    Parse error: {sampleDataError}
+                  </div>
+                )}
+                {!sampleDataError && isSampleCustom && (
+                  <div style={{ marginTop: 6, fontSize: 11.5, color: "#6b7280" }}>
+                    Using custom sample data. Template will render with these values.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Validation */}
           <h3 style={sectionTitle}>Validation</h3>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1488,7 +1585,7 @@ function ConnectorPage() {
                 fontFamily: "'JetBrains Mono', monospace", fontSize: 11, lineHeight: 1.6,
                 whiteSpace: "pre-wrap", color: "#374151", maxHeight: 200, overflowY: "auto",
               }}>
-                {JSON.stringify(SAMPLE_DATA, null, 2)}
+                {JSON.stringify(sampleData, null, 2)}
               </div>
             </details>
           )}

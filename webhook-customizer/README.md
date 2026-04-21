@@ -5,13 +5,13 @@ A standalone tool for building, validating, and testing custom webhook payload t
 ## Quick Start
 
 ```bash
-python3 serve.py
+GEMINI_API_KEY=YOUR-GEMINI-KEY python3 serve.py
 ```
 
 Opens automatically at [http://localhost:8080](http://localhost:8080). Pass a custom port if needed:
 
 ```bash
-python3 serve.py 3000
+GEMINI_API_KEY=YOUR-GEMINI-KEY python3 serve.py 3000
 ```
 
 ## Requirements
